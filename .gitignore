@@ -1,0 +1,10 @@
+# Libra storage (never tracked)
+.libra/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+*~
+
+# Logs
+*.log
