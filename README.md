@@ -25,7 +25,10 @@ libra-workflow-and-versioning/
 │   ├── sync-skills.sh               ← regenerate mirrors (--check for CI/hooks)
 │   ├── validate-skills.sh           ← frontmatter, naming, links, line budget
 │   └── install-hooks.sh             ← wire both into .libra/hooks/
-├── install.sh                       ← install every skill globally for all agents
+├── install.sh                       ← contributor install: symlink a working copy
+├── bin/install.mjs                  ← npm installer (`npx @libra-tools/skills`)
+├── package.json                     ← published as @libra-tools/skills
+├── .github/workflows/               ← CI + npm release
 ├── AGENTS.md                        ← conventions for editing this repo
 └── README.md
 ```
@@ -51,6 +54,18 @@ fails closed on Windows and does not survive a zip download.
 
 ## Use it
 
+### Quickest — no clone, no Libra required
+
+```bash
+npx @libra-tools/skills            # install for every agent, globally
+npx @libra-tools/skills --project  # install into the current repository instead
+npx @libra-tools/skills uninstall
+```
+
+This writes the skills into every directory the supported agents scan, **and**
+emits the Libra-native single-file form so `libra code` picks up the same
+content. Useful options: `--copy` / `--link`, `--dry-run`, `--no-libra`.
+
 ### Per-project (no install)
 
 Clone the repo and open it with any supported agent — the skills are discovered automatically from the directories above.
@@ -66,7 +81,11 @@ To add the skills to **another** project, copy the skill folder into that projec
 `.agents/skills/` (Gemini + opencode) and `.claude/skills/` + `.codex/skills/`
 (Claude + Codex).
 
-### Globally (available in every repo)
+### From a clone (contributor path)
+
+`install.sh` symlinks your working copy, so an edit to `skills/` takes effect
+immediately in every agent — that is what makes it the contributor tool rather
+than `npx`.
 
 ```bash
 ./install.sh              # symlink into all five global skill directories
@@ -84,9 +103,12 @@ Re-run it after `libra pull` to pick up updates.
 - **Gemini CLI** — auto-discovered; the skill's name + description are injected into the system prompt and loaded on demand.
 - **opencode** — auto-discovered; the agent loads the body on demand via its native `skill` tool.
 
-> **Note:** `libra code`'s own agent runtime uses a *different* skill format — a single
-> `<name>.md` with TOML frontmatter under `.libra/skills/` or `~/.config/libra/skills/`
-> — so skills here are not visible to it, and vice versa.
+> **`libra code` uses a different format.** Its agent runtime loads a single
+> `<name>.md` with TOML frontmatter from `.libra/skills/` or
+> `~/.config/libra/skills/`, not a directory with a `SKILL.md`. The npm installer
+> bridges this: it flattens the skill (references inlined) into that format as
+> well, so `/skill libra-workflow-and-versioning` works inside `libra code`.
+> `install.sh` does not — use `npx @libra-tools/skills` if you want both.
 
 ## Add or edit a skill
 

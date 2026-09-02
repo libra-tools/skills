@@ -54,3 +54,59 @@ jobs:
           test -f "$HOME/.agents/skills/libra-workflow-and-versioning/references/worktrees.md"
           ./install.sh --uninstall
           test ! -e "$HOME/.claude/skills/libra-workflow-and-versioning"
+
+  npm-installer:
+    name: npm installer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Help and version
+        run: |
+          node bin/install.mjs --help
+          test "$(node bin/install.mjs --version)" = "$(node -p "require('./package.json').version")"
+
+      - name: Project-mode install round trip
+        run: |
+          mkdir -p /tmp/proj/.libra
+          node bin/install.mjs --project /tmp/proj --copy
+          test -f /tmp/proj/.claude/skills/libra-workflow-and-versioning/SKILL.md
+          test -f /tmp/proj/.codex/skills/libra-workflow-and-versioning/references/worktrees.md
+          test -f /tmp/proj/.libra/skills/libra-workflow-and-versioning.md
+          node bin/install.mjs --project /tmp/proj uninstall
+          test ! -e /tmp/proj/.claude/skills/libra-workflow-and-versioning
+
+      # `libra code` parses TOML frontmatter with deny_unknown_fields, so an
+      # extra or misspelled key makes the generated skill unloadable.
+      - name: libra-native skill has valid, accepted frontmatter
+        run: |
+          mkdir -p /tmp/native/.libra
+          node bin/install.mjs --project /tmp/native --copy > /dev/null
+          python3 - /tmp/native/.libra/skills/libra-workflow-and-versioning.md <<'PY'
+          import sys, tomllib
+          text = open(sys.argv[1], encoding="utf-8").read()
+          assert text.startswith("---"), "missing leading fence"
+          data = tomllib.loads(text[3:text.index("---", 3)].strip())
+          allowed = {"name", "description", "version", "allowed-tools", "allowed_tools"}
+          extra = set(data) - allowed
+          assert not extra, f"frontmatter keys libra would reject: {sorted(extra)}"
+          assert data.get("name"), "name must be non-empty"
+          print("libra-native frontmatter ok:", sorted(data))
+          PY
+
+      # The published tarball must carry the canonical skills/ and none of the
+      # generated agent mirrors. Checked here as well as at release time.
+      - name: Tarball contents
+        run: |
+          npm pack --dry-run --json > /tmp/pack.json
+          node -e '
+            const files = require("/tmp/pack.json")[0].files.map(f => f.path);
+            const bad = files.filter(f => /^\.(agents|claude|codex)\//.test(f));
+            if (bad.length) { console.error("generated mirrors leaked into the tarball:", bad); process.exit(1); }
+            if (!files.some(f => f.startsWith("skills/"))) { console.error("tarball carries no skills/"); process.exit(1); }
+            console.log(`tarball ok: ${files.length} files`);
+          '
