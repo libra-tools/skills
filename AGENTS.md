@@ -59,11 +59,26 @@ Keep `skills/<name>/SKILL.md` as the canonical layout — it is the first
 well-known location that CLI looks in, and it is what makes the command above
 work. Moving it would silently break every installer.
 
-There is deliberately **no npm package**. An earlier iteration built one (it was
-never published) before we found the `skills` CLI: it duplicated a subset of that
-CLI while costing a release pipeline, an npm token and a version to keep in step. The one thing it did that the CLI cannot —
-emitting the Libra-native single-file skill for `libra code` — lives in
-`scripts/emit-libra-skill.sh` instead, and `install.sh` calls it.
+### One channel, deliberately
+
+There is no npm package and no Claude Code plugin manifest, and neither is an
+oversight:
+
+- **No npm package.** An earlier iteration built one (never published) before we
+  found the `skills` CLI. It duplicated a subset of that CLI while costing a
+  release pipeline, an npm token and a version to keep in step. The one thing it
+  did that the CLI cannot — emitting the Libra-native single-file skill for
+  `libra code` — lives in `scripts/emit-libra-skill.sh` instead, and
+  `install.sh` calls it.
+- **No `.claude-plugin/plugin.json`.** A plugin manifest would serve Claude Code
+  only, which `npx skills add` already covers, so it buys reach we have and adds
+  a second channel to keep in step. Reconsider only if listing on the official
+  marketplace is wanted for discovery — that is a distribution decision, not a
+  capability one.
+
+The rule both cases came from: **do not re-implement what the ecosystem already
+does.** Add a channel only for something no existing tool can do, the way the
+`libra code` bridge earns its place.
 
 ## SKILL.md rules (keep skills portable)
 
