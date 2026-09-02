@@ -49,12 +49,20 @@ The local pre-commit hook can be skipped with `--no-verify`; CI cannot. Keep bot
 
 ## Publishing
 
-Skills are distributed as an npm package so a user can install them without a
-clone — and without Libra:
+The primary distribution channel is the ecosystem CLI, which reads this
+repository's layout straight from GitHub and needs nothing from us:
 
 ```bash
-npx @libra-tools/skills install
+npx skills add libra-tools/libra-workflow-and-versioning
 ```
+
+Keep `skills/<name>/SKILL.md` as the canonical layout — it is the first
+well-known discovery location that CLI looks in, which is what makes the command
+above work.
+
+We also publish an npm package, `@libra-tools/skills`, for the two things that
+CLI cannot do: emitting the Libra-native single-file skill for `libra code`, and
+pinning an exact version.
 
 `release.yml` owns publishing; never run `npm publish` from a laptop. To cut a
 release:

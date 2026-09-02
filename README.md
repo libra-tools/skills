@@ -54,17 +54,35 @@ fails closed on Windows and does not survive a zip download.
 
 ## Use it
 
-### Quickest — no clone, no Libra required
+### Recommended — the `skills` CLI
+
+This repository follows the open Agent Skills layout, so the ecosystem CLI
+installs it directly from GitHub. No clone, no npm package, no Libra required:
+
+```bash
+npx skills add libra-tools/libra-workflow-and-versioning            # into this project
+npx skills add libra-tools/libra-workflow-and-versioning -g         # globally
+npx skills add libra-tools/libra-workflow-and-versioning --list     # just look
+```
+
+[`skills`](https://github.com/vercel-labs/skills) supports 77 agents, symlink or
+`--copy` installs, per-agent targeting (`-a claude-code -a opencode`), and
+`skills list` / `update` / `remove`. Prefer it unless you need one of the two
+things it does not do — see below.
+
+### With the `libra code` bridge, or a pinned version
 
 ```bash
 npx @libra-tools/skills            # install for every agent, globally
 npx @libra-tools/skills --project  # install into the current repository instead
+npx @libra-tools/skills@0.1.0      # pin an exact version
 npx @libra-tools/skills uninstall
 ```
 
-This writes the skills into every directory the supported agents scan, **and**
-emits the Libra-native single-file form so `libra code` picks up the same
-content. Useful options: `--copy` / `--link`, `--dry-run`, `--no-libra`.
+Our own installer exists for the two things the `skills` CLI has no notion of:
+it **also emits the Libra-native single-file skill** so `libra code` picks up the
+same content, and npm semver lets you pin a release. Otherwise it does strictly
+less. Options: `--copy` / `--link`, `--dry-run`, `--no-libra`.
 
 ### Per-project (no install)
 
@@ -105,10 +123,10 @@ Re-run it after `libra pull` to pick up updates.
 
 > **`libra code` uses a different format.** Its agent runtime loads a single
 > `<name>.md` with TOML frontmatter from `.libra/skills/` or
-> `~/.config/libra/skills/`, not a directory with a `SKILL.md`. The npm installer
-> bridges this: it flattens the skill (references inlined) into that format as
+> `~/.config/libra/skills/`, not a directory with a `SKILL.md`. Neither the
+> `skills` CLI nor `install.sh` knows about it. `npx @libra-tools/skills`
+> bridges it: it flattens the skill (references inlined) into that format as
 > well, so `/skill libra-workflow-and-versioning` works inside `libra code`.
-> `install.sh` does not — use `npx @libra-tools/skills` if you want both.
 
 ## Add or edit a skill
 
