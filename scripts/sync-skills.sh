@@ -2,23 +2,27 @@
 #
 # Mirror the canonical skills into each agent's namespaced directory.
 #
-# Canonical skills live in .agents/skills/<name>/ (read directly by Gemini CLI and
-# opencode). Claude Code reads .claude/skills/ and Codex CLI reads .codex/skills/,
-# so we keep real copies there. Real copies (not symlinks) are used because Libra
-# does not track symlinks and because copies survive Windows clones and zip downloads.
+# Canonical skills live in skills/<name>/. Every directory starting with a dot is
+# a GENERATED MIRROR and must never be hand-edited:
+#
+#   .agents/skills/   Gemini CLI, opencode (and Codex, via the same standard)
+#   .claude/skills/   Claude Code
+#   .codex/skills/    Codex CLI
+#
+# Real copies (not symlinks) are used because a symlink checkout fails closed on
+# Windows and does not survive a zip download. (Libra itself does track symlinks:
+# it stages them as mode 120000 blobs and restores them on Unix.)
 #
 # Usage:
-#   scripts/sync-skills.sh            # mirror canonical -> .claude/skills + .codex/skills
-#   scripts/sync-skills.sh --check    # exit non-zero if any mirror is out of date (for CI)
-#
-# Run this after editing anything under .agents/skills/, before committing.
+#   scripts/sync-skills.sh            # mirror skills/ -> the three agent dirs
+#   scripts/sync-skills.sh --check    # exit non-zero if any mirror is out of date
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repo_root"
 
-src=".agents/skills"
-tools=(claude codex)
+src="skills"
+tools=(agents claude codex)
 check_only=false
 [ "${1:-}" = "--check" ] && check_only=true
 

@@ -1,6 +1,6 @@
 ---
 name: libra-workflow-and-versioning
-description: Structures Libra (AI-agent-native VCS) workflow practices. Use when making any change in a `libra` repository. Use when committing, branching, working across worktrees, backing up to the cloud, or organizing work for AI agents. Adapts git-workflow-and-versioning to Libra's SQLite-backed refs, shared-storage worktrees, and structured CLI surface.
+description: Structures Libra (AI-agent-native VCS) workflow practices. Use when making any change in a `libra` repository. Use when committing, branching, working across worktrees, backing up to the cloud, or organizing work for AI agents. Adapts git-workflow-and-versioning to Libra's SQLite-backed refs, per-worktree HEAD over shared object storage, and structured CLI surface.
 ---
 
 # Libra Workflow and Versioning
@@ -11,7 +11,19 @@ Libra is an **AI-agent-native version control system**: a partial Git client wit
 
 Treat commits as save points, branches as sandboxes, and history as documentation. With AI agents generating code at high speed, disciplined version control is the mechanism that keeps changes manageable, reviewable, and reversible. Libra adds machine-readable structure on top of Git's model — `--json` / `--machine` output and stable `LBR-*` error codes — precisely so that agents (and humans) can drive it reliably.
 
-**Libra is not Git.** Most commands mirror Git (`add`, `commit`, `branch`, `merge`, `rebase`, `log`, `diff`, `bisect`), but the storage model and a few behaviors diverge deliberately. When unsure whether a flag is honored, consult [`COMPATIBILITY.md`](COMPATIBILITY.md) — every top-level command is classed `supported` / `partial` / `unsupported` / `intentionally-different`. The biggest divergences for everyday workflow are **worktrees** (they share one repo database — see below) and **commit conventions**.
+**Libra is not Git.** Most commands mirror Git (`add`, `commit`, `branch`, `merge`, `rebase`, `log`, `diff`, `bisect`), but the storage model and a few behaviors diverge deliberately. When unsure whether a flag is honored, consult `COMPATIBILITY.md` at the root of the Libra source tree — every top-level command is classed `supported` / `partial` / `unsupported` / `intentionally-different` — and `docs/commands/<name>.md` for the per-flag contract. The biggest divergences for everyday workflow are **worktrees**, **commit signing**, and **commit conventions**.
+
+> Verified against **Libra 0.22.10**. Libra moves fast: when anything here contradicts `libra <cmd> --help` or `docs/commands/<name>.md`, the binary wins — `CHANGELOG.md` carries the breaking-change trail.
+
+**Deeper references** (read on demand, not up front):
+
+| File | When to read it |
+|---|---|
+| [`references/worktrees.md`](references/worktrees.md) | Before any `libra worktree` use, or when setting up parallel agents |
+| [`references/commit-signing-hooks.md`](references/commit-signing-hooks.md) | Signing, the hook chain, message sources, `-a` semantics |
+| [`references/structured-output.md`](references/structured-output.md) | Scripting Libra: envelopes, exit codes, the error-code table |
+| [`references/ai-commands.md`](references/ai-commands.md) | `code` / `agent` / `review` / `investigate` / `automation`, and the Lore working-tree extensions |
+| [`references/cloud-publish.md`](references/cloud-publish.md) | Remotes, cloud backup, publishing, Git interchange |
 
 ## When to Use
 
@@ -31,7 +43,7 @@ main ──●──●──●──●──●──●──●──●─
 
 - **Dev branches are costs.** Every day a branch lives, it accumulates merge risk.
 - **Release branches are acceptable.** When you need to stabilize a release while `main` moves forward.
-- **`main` is protected.** Libra locks `main` (and `intent` / `agent-traces`) against destructive ops — see [Branching Strategy](#branching-strategy). Lean into that: don't fight the lock with workarounds, merge through it.
+- **`main` is protected.** Libra locks `main` (and the AI-capture refs `intent` / `traces`) against destructive ops — see [Branching Strategy](#branching-strategy). Lean into that: don't fight the lock with workarounds, merge through it.
 
 ### 1. Commit Early, Commit Often
 
@@ -53,14 +65,12 @@ Each commit does one logical thing:
 
 ```
 # Good: each commit is self-contained
-libra log --oneline
 a1b2c3d feat(tasks): add task creation endpoint with validation
 d4e5f6g feat(tasks): add task creation form component
 h7i8j9k feat(tasks): connect form to API and add loading state
 m1n2o3p test(tasks): add task creation tests (unit + integration)
 
 # Bad: everything mixed together
-libra log --oneline
 x1y2z3a add task feature, fix sidebar, update deps, refactor utils
 ```
 
@@ -115,13 +125,11 @@ Target ~100 lines per commit/PR. Changes over ~1000 lines should be split.
 
 ## Libra Commit Conventions
 
-These are the Libra-specific habits that keep history clean and avoid known footguns.
-
 ### Stage explicitly; avoid `commit -a`
 
 `libra commit -a` stages **every** working-tree change, including out-of-band deletions — it has silently rolled back already-landed files. For a narrow patch, stage the exact files and omit `-a`:
 
-```
+```bash
 # Preferred — narrow, predictable
 libra add src/command/commit.rs docs/commands/commit.md
 libra commit -s -m "feat(commit): support --conventional"
@@ -132,7 +140,7 @@ libra commit -a -s -m "..."
 
 Before committing shared files in a repo where another agent/session may be active, diff first — bundling an old WIP copy of a file can revert another stream's just-landed fixes:
 
-```
+```bash
 libra diff src/cli.rs        # confirm you're not clobbering someone else's work
 ```
 
@@ -140,17 +148,16 @@ libra diff src/cli.rs        # confirm you're not clobbering someone else's work
 
 Current practice is a single `-s` (just a `Signed-off-by` trailer) and a single `-m`. Passing **multiple** `-m` flags is rejected (`LBR-CLI-002`); use one `-m` with a multi-line message, or `-F <file>`:
 
-```
+```bash
 libra commit -s -m "fix(push): record tracking reflog"
 ```
 
-### Cryptographic signing is vault-backed, not GnuPG
+### Signing and hooks differ from Git — know these two
 
-`-S` / `--gpg-sign` / `commit.gpgSign` drive **vault-backed PGP signing** (libvault, `.libra`), *not* an external `gpg` process. Don't expect a GnuPG agent, keyring, or `~/.gnupg` to be involved. Same chain is reused by `merge` and `cherry-pick`.
+- **Signing is on by default and there is no `-S`.** `libra init` sets `vault.signing=true`, so commits are PGP-signed with the repository vault key (libvault), not GnuPG. `-S` / `--gpg-sign` are not exposed; `--no-gpg-sign` opts out per commit.
+- **The hook chain is Libra-native and complete.** `.libra/hooks/*.sh|.ps1` runs `pre-commit` → `prepare-commit-msg` → `commit-msg` → commit → `post-commit` (→ `post-rewrite` for `--amend`). `--no-verify` skips all of it; `--disable-pre` skips only `pre-commit`.
 
-### Hooks are Libra-native
-
-`prepare-commit-msg` / `commit-msg` run from `.libra/hooks/*.sh|.ps1`, not `.git/hooks`. `post-commit` is not run. External-agent capture hooks (Claude Code / Gemini) are installed by `libra agent enable`.
+Full detail — message sources, capture hooks, `-a` preflight limits — in [`references/commit-signing-hooks.md`](references/commit-signing-hooks.md).
 
 ## Branching Strategy
 
@@ -166,6 +173,8 @@ main (always deployable, LOCKED)
 - Keep branches short-lived (merge within 1-3 days). Delete branches after merge.
 - Prefer feature flags over long-lived branches for incomplete work.
 
+**Naming:** `feature/<desc>` · `fix/<desc>` · `chore/<desc>` · `refactor/<desc>`.
+
 ### Refs live in SQLite, not files
 
 Branches, tags, `HEAD`, and reflog are rows in `.libra/libra.db`, not files under `.git/refs`. Practical consequences:
@@ -176,42 +185,20 @@ Branches, tags, `HEAD`, and reflog are rows in `.libra/libra.db`, not files unde
 
 ### Locked branches are protected
 
-`main`, `intent`, and `agent-traces` are locked: destructive operations (force-create, force-rename, delete) are refused by design. This is intentional, not a bug — merge into them rather than rewriting them.
+`main`, `intent` (`refs/libra/intent`), and `traces` (`refs/libra/traces`, legacy alias `agent-traces`) are locked: destructive operations (force-create, force-rename, delete) are refused by design. The latter two are Libra's AI-capture refs — `libra agent push` publishes `refs/libra/traces` to a remote. This is intentional, not a bug: merge into a locked branch rather than rewriting it.
 
-### Branch Naming
+## Working with Worktrees
 
-```
-feature/<short-description>   → feature/task-creation
-fix/<short-description>       → fix/duplicate-tasks
-chore/<short-description>     → chore/update-deps
-refactor/<short-description>  → refactor/auth-module
-```
-
-## Working with Worktrees ⚠️ (read this — Libra differs from Git)
-
-**Libra worktrees do NOT give you Git-style branch isolation.** Every linked worktree's `.libra` is a *symlink* back to one shared storage directory, so all worktrees **share the same SQLite database, object store, `HEAD`, index, and refs**. There is **no branch-per-worktree** (the `add` subcommand takes no branch argument). Switching branches or committing in one worktree changes state for all of them.
+Each linked worktree owns a **real `.libra` directory** with its private `HEAD`, index, and HEAD reflog. Worktrees share one database, object store, and refs, but **each keeps its own checked-out branch and staging state** — so they *are* a usable parallel-agent primitive: one worktree, one branch, per stream.
 
 ```bash
-# Create / list / manage worktrees (alias: wt)
-libra worktree add ../experiment
-libra wt list
-libra wt lock ../experiment --reason "long-running experiment"
-libra wt remove ../experiment            # unregisters only — KEEPS files on disk by default
-libra wt remove --delete-dir ../experiment   # Git-style delete (refused if dirty)
+libra worktree add ../probe                  # detached at the source commit (Libra's default)
+libra worktree add ../fix-1 hotfix           # check an existing branch out, attached
+libra worktree add -b topic ../topic main    # create `topic` and check it out
+libra wt remove ../probe                     # DETACHES: keeps files (use --delete-dir to remove)
 ```
 
-What Libra worktrees **are** good for:
-- A second physical checkout of the *same* state (e.g. run a long build in one dir while editing in another).
-- A new worktree is populated from **HEAD** (last commit), not the staging index.
-
-What they are **NOT**:
-- They are **not** an isolation mechanism for parallel agents on different branches. Because HEAD/refs are shared, two agents committing in two worktrees land on the **same** branch and can bundle each other's work.
-
-For true branch isolation across parallel streams, do one of:
-1. **Separate clones** — `libra clone` into independent directories (separate `.libra` databases). This is the real parallel-isolation primitive.
-2. **Branch + `symbolic-ref`** — within one repo, drive HEAD deliberately with `libra switch` / `libra symbolic-ref` and land each stream on its own branch, then push the branch (`libra push origin <branch>:main` to fast-forward onto the trunk).
-
-Safety notes baked into the command: `worktree remove` keeps the directory by default (Git deletes it); `--delete-dir` is refused on a dirty worktree; locked worktrees can't be moved or removed.
+Four traps before you use it: no basename-branch default, one checkout per branch, `-b` only creates, and `remove` detaches rather than deletes. Worktrees made by older Libra versions report `layout: legacy-symlink` and **refuse every mutation with `LBR-REPO-003`** until `libra worktree repair --migrate-layout --confirm`. Read [`references/worktrees.md`](references/worktrees.md) before your first `worktree` command.
 
 ## The Save Point Pattern
 
@@ -264,14 +251,14 @@ cargo clippy --all-targets --all-features -- -D warnings   # zero warnings requi
 LIBRA_SKIP_WEB_BUILD=1 cargo test --all                    # L1 layer; L2/L3 auto-skip
 ```
 
-Wire repeatable checks into a Libra-native hook at `.libra/hooks/pre-commit.sh` (templates live in `template/pre-commit.sh` / `pre-commit.ps1`).
+Wire repeatable checks into a Libra-native hook at `.libra/hooks/pre-commit.sh` (templates live in the Libra source tree at `template/pre-commit.sh` / `template/pre-commit.ps1`).
 
 ## Handling Generated & Ignored Files
 
 - **Ignore rules:** Libra honors `.libraignore` first, then `.gitignore`. Either works; prefer `.libraignore` for Libra-only excludes.
 - **Never commit** the storage dir `.libra/` (database, objects, vault, worktree registry), build output (`target/`, `dist/`, `.next/`, `web/out/` except when intentionally embedded), env files (`.env`, `.env.test`), or IDE config.
 - **Do commit** generated files the project expects (e.g. lockfiles, SQL migrations under `sql/migrations/`).
-- After landing a built-in schema migration, the local repo can fail `LBR-REPO-002` until you run `libra db upgrade` — which also live-validates the forward + down DDL.
+- Schema migrations apply **automatically** when a command opens the database; there is no `libra db upgrade` (it was removed). `LBR-REPO-002` now means repository metadata is genuinely corrupt or incompatible, and `LBR-CONFIG-001` means the *global* config DB is newer than this binary. Neither is related to `libra upgrade`, which replaces the installed **binary** from the signed release channel and never touches repository state.
 
 ## Using Libra for Debugging
 
@@ -281,55 +268,45 @@ libra bisect start
 libra bisect bad HEAD
 libra bisect good <known-good-commit>
 libra bisect run <test-command>          # auto-narrow; or test each midpoint manually
-
-# Or bound it in one shot (multiple good commits allowed):
-libra bisect start <bad> <good1> <good2>
+libra bisect start <bad> <good1> <good2> # or bound it in one shot
 
 # View what changed recently
 libra log --oneline -20
 libra diff HEAD~5..HEAD -- src/
 
-# Find who last changed a specific line
+# Find who last changed a specific line, or search
 libra blame src/command/commit.rs
-
-# Search commit messages / working tree
 libra log --grep="validation" --oneline
 libra grep "fn execute" -- src/
 ```
 
-## AI-Native Workflows (Libra extensions)
+## AI-Native Workflows
 
 These have no Git equivalent; they're why Libra exists. Treat them as first-class workflow tools:
 
-- **`libra code`** — interactive TUI with an AI agent, background web server, and MCP server. The primary collaborative-development surface.
-- **`libra agent`** — manage external-agent capture, **checkpoints**, hooks, and RPC adapters. Checkpoints are agent-run save points layered on top of commits.
-- **`libra automation`** — list, run, and inspect rule-based automation.
-- **`libra graph`** — inspect a Code thread's version graph in a dedicated TUI.
-- **`libra usage`** — report/prune AI provider & model usage and cost aggregates.
-- **`libra sandbox`** — inspect AI sandbox diagnostics (OS backend availability, downgrade warnings).
+- **`libra code`** — the collaborative-development surface. Launches the **Web Code UI**; the legacy TUI was removed in v0.20.0. Automate with `libra code --control stdio`.
+- **`libra agent`** — external-agent capture: `enable`/`disable` hooks, `session`, `checkpoint`, `doctor`, `push`, `bridge`.
+- **`libra graph --json <thread-id>`** — a Code thread's version graph. The graph TUI was removed in v0.20.0.
+- **`libra review`** / **`libra investigate`** — read-only multi-agent review and investigation runs.
+- **`libra automation`** · **`libra usage`** · **`libra sandbox status`** · **`libra service`**.
 
-These are classed `intentionally-different` in `COMPATIBILITY.md` — they are Libra-only and won't map to any Git command.
+Libra also ships working-tree extensions with no Git equivalent: `layer`, `sparse-view`, `hydrate`, `dirty`, `lfs`, `file obliterate`.
+
+Full command surfaces, flags, and Libra's *own* (incompatible) skill format are in [`references/ai-commands.md`](references/ai-commands.md).
 
 ## Cloud Backup & Publishing
 
-Libra's tiered storage and cloud paths replace ad-hoc remotes for backup/sharing:
-
 ```bash
-# Push to a configured remote (branch/tag update, multi-refspec, delete, --tags, --mirror)
-libra push origin feature/task-creation
-
-# Back up / restore repository metadata via Cloudflare D1 + R2
-libra cloud ...
-
-# Publish a read-only snapshot to the Cloudflare Worker host
-libra publish ...
+libra push origin feature/task-creation   # pushing to a local file:// remote is rejected
+libra cloud sync | status | restore       # Cloudflare D1 (index/metadata) + R2 (objects)
+libra publish init | status | sync | deploy
 ```
 
-Notes: pushing to a **local `file://` remote is intentionally rejected**. Large blobs use Libra's built-in LFS (`.libra_attributes`, not Git LFS filters/hooks). Cloud backup needs `LIBRA_D1_*`; tiered S3/R2 storage needs `LIBRA_STORAGE_*`.
+Cloud backup needs `LIBRA_D1_*`; tiered S3/R2 storage needs `LIBRA_STORAGE_*`. Large blobs use Libra's built-in LFS (`.libra_attributes`, not Git LFS). Details, plus Git interchange via `bundle` / `fast-export`, in [`references/cloud-publish.md`](references/cloud-publish.md).
 
-## Structured Output & Error Codes (drive Libra like an agent)
+## Structured Output & Error Codes
 
-Every output-bearing command supports a consistent envelope — use it for scripting and automation instead of scraping human text:
+Every output-bearing command supports a consistent envelope — use it for scripting instead of scraping human text:
 
 ```bash
 libra --json status        # pretty JSON envelope on stdout
@@ -338,7 +315,7 @@ libra --machine status     # compact JSON; suppresses progress/decoration
 ```
 
 ```json
-{ "ok": true, "command": "status", "data": { ... } }
+{ "ok": true, "command": "status", "data": { } }
 ```
 
 Failures carry a **stable error code** and (on non-TTY stderr, or with `LIBRA_ERROR_JSON=1`) a final JSON report. Branch on the code, not the prose:
@@ -350,7 +327,7 @@ Failures carry a **stable error code** and (on non-TTY stderr, or with `LIBRA_ER
 | `128` | Fatal runtime error — check `error_code` |
 | `129` | Usage / invalid target — fix the invocation |
 
-Namespaces: `LBR-REPO-*` (repo state) · `LBR-CLI-*` (argument validation) · `LBR-NET-*` (transport) · `LBR-FS-*` / `LBR-IO-*` (filesystem) · `LBR-IDX-*` (index) · `LBR-OBJ-*` (objects) · `LBR-VAULT-*` (vault) · `LBR-CONFLICT-*` (conflicts).
+`libra help error-codes` prints the authoritative code table; the namespaces and the codes worth recognizing on sight are in [`references/structured-output.md`](references/structured-output.md).
 
 ## Common Rationalizations
 
@@ -358,10 +335,10 @@ Namespaces: `LBR-REPO-*` (repo state) · `LBR-CLI-*` (argument validation) · `L
 |---|---|
 | "I'll commit when the feature is done" | One giant commit is impossible to review, debug, or revert. Commit each slice. |
 | "`commit -a` is faster" | It stages out-of-band deletions and unrelated edits, and has silently reverted landed work. `libra add <files>` then `commit -s -m`. |
-| "Worktrees isolate my agents like Git" | They don't — Libra worktrees share one DB/HEAD/refs. Use separate clones or branch + `symbolic-ref` for real isolation. |
+| "Worktrees behave exactly like Git's" | Close, but not identical: a bare `add` is detached (no basename branch), a nonexistent branch fails closed, one checkout per branch, and `remove` detaches instead of deleting. |
 | "I'll pass two `-m` flags" | Rejected with `LBR-CLI-002`. Use one `-m` with newlines, or `-F`. |
-| "`-S` will use my gpg key" | Libra signs via the vault (libvault PGP), not GnuPG. No keyring involved. |
-| "I'll force-rewrite `main`" | `main`/`intent`/`agent-traces` are locked. Merge into them instead. |
+| "`-S` will use my gpg key" | `-S` / `--gpg-sign` are not exposed at all. Signing is vault-backed (libvault PGP) and on by default; skip it per commit with `--no-gpg-sign`. |
+| "I'll force-rewrite `main`" | `main` / `intent` / `traces` are locked. Merge into them instead. |
 | "I'll edit the ref file" | There are none — refs are SQLite rows. Use `branch`/`tag`/`switch`/`symbolic-ref`. |
 | "The message doesn't matter" | Messages are documentation. Future agents will need the why. |
 
@@ -370,7 +347,7 @@ Namespaces: `LBR-REPO-*` (repo state) · `LBR-CLI-*` (argument validation) · `L
 - Large uncommitted changes accumulating
 - Commit messages like "fix", "update", "misc"
 - `libra commit -a` on a repo with other active sessions/agents (bundles their work)
-- Treating worktrees as branch-isolated parallel sandboxes
+- Worktrees still on the pre-isolation `legacy-symlink` layout (every mutation fails `LBR-REPO-003`)
 - Formatting changes mixed with behavior changes
 - Committing `.libra/`, `target/`, `.env`, or build artifacts
 - No `.libraignore` / `.gitignore`

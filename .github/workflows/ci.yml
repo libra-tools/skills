@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  skills:
+    name: Validate skills and mirrors
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same two checks the local pre-commit hook runs. A local hook can be
+      # skipped with --no-verify; this one cannot.
+      - name: Validate skills
+        run: bash scripts/validate-skills.sh
+
+      - name: Agent mirrors are in sync with skills/
+        run: bash scripts/sync-skills.sh --check
+
+      # Regression guard: these scripts are documented as `./install.sh` and
+      # `scripts/sync-skills.sh`, which fails outright without the exec bit.
+      - name: Scripts are executable
+        run: |
+          status=0
+          for f in install.sh scripts/*.sh hooks/*.sh; do
+            [ -x "$f" ] || { echo "not executable: $f"; status=1; }
+          done
+          exit $status
+
+      - name: Shell scripts parse
+        run: |
+          status=0
+          for f in install.sh scripts/*.sh hooks/*.sh; do
+            bash -n "$f" || status=1
+          done
+          exit $status
+
+      # A consumer must be able to install without a clone-local shell. Prove the
+      # documented entry points work on a clean runner.
+      - name: install.sh --dry-run
+        run: ./install.sh --dry-run
+
+      - name: install.sh --copy round-trip
+        run: |
+          ./install.sh --copy
+          test -f "$HOME/.claude/skills/libra-workflow-and-versioning/SKILL.md"
+          test -f "$HOME/.agents/skills/libra-workflow-and-versioning/references/worktrees.md"
+          ./install.sh --uninstall
+          test ! -e "$HOME/.claude/skills/libra-workflow-and-versioning"
