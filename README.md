@@ -1,4 +1,4 @@
-# libra-workflow-and-versioning
+# libra-tools/skills
 
 A **cross-agent Agent Skills repository**. It packages reusable [`SKILL.md`](https://www.agensi.io/learn/agent-skills-open-standard) skills that work — unmodified — across **Claude Code**, **OpenAI Codex CLI**, **Google Gemini CLI**, and **opencode**, using the open *Agent Skills* standard.
 
@@ -13,7 +13,7 @@ Tracked with [**Libra**](https://github.com/web3-infra-foundation/libra), the AI
 ## Layout
 
 ```
-libra-workflow-and-versioning/
+libra-tools/skills/
 ├── skills/<name>/                   ← CANONICAL. Edit only here.
 │   ├── SKILL.md                     ← decision-level (≤400 lines, enforced)
 │   └── references/*.md              ← depth, loaded on demand
@@ -59,9 +59,9 @@ This repository follows the open Agent Skills layout, so the ecosystem CLI
 installs it directly from GitHub. No clone, no npm package, no Libra required:
 
 ```bash
-npx skills add libra-tools/libra-workflow-and-versioning            # into this project
-npx skills add libra-tools/libra-workflow-and-versioning -g         # globally
-npx skills add libra-tools/libra-workflow-and-versioning --list     # just look
+npx skills add libra-tools/skills            # into this project
+npx skills add libra-tools/skills -g         # globally
+npx skills add libra-tools/skills --list     # just look
 ```
 
 [`skills`](https://github.com/vercel-labs/skills) supports 77 agents, symlink or
@@ -86,8 +86,8 @@ scripts/emit-libra-skill.sh --stdout <skill-name>  # inspect, write nothing
 Clone the repo and open it with any supported agent — the skills are discovered automatically from the directories above.
 
 ```bash
-libra clone https://github.com/libra-tools/libra-workflow-and-versioning.git
-cd libra-workflow-and-versioning
+libra clone https://github.com/libra-tools/skills.git
+cd skills
 scripts/install-hooks.sh     # once, if you intend to commit here
 # then run `claude`, `codex`, `gemini`, or `opencode` in this directory
 ```

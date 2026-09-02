@@ -38,7 +38,7 @@ land an invalid skill or a stale mirror is refused.
 ## CI
 
 Two GitHub Actions workflows run on the mirror
-(`libra-tools/libra-workflow-and-versioning`):
+(`libra-tools/skills`):
 
 | Workflow | Trigger | What it does |
 |---|---|---|
@@ -52,7 +52,7 @@ The supported install path is the ecosystem CLI, which reads this repository's
 layout straight from GitHub and needs nothing published on our side:
 
 ```bash
-npx skills add libra-tools/libra-workflow-and-versioning
+npx skills add libra-tools/skills
 ```
 
 Keep `skills/<name>/SKILL.md` as the canonical layout — it is the first
@@ -93,7 +93,7 @@ Libra ships breaking changes often. A skill that documents Libra must:
 ## Versioning
 
 This repo is tracked with **Libra**, not Git, and mirrored to GitHub
-(`libra-tools/libra-workflow-and-versioning`) for CI and distribution.
+(`libra-tools/skills`) for CI and distribution.
 
 ```bash
 libra add <files>
