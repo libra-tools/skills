@@ -7,8 +7,9 @@
 #   2. frontmatter uses only portable top-level keys
 #   3. `name` equals the directory name, is lowercase/digits/single-hyphens, <= 64 chars
 #   4. `description` is present and <= 1024 chars
-#   5. every relative Markdown link resolves to a file inside the skill directory
-#   6. SKILL.md stays within the line budget (deep material belongs in references/)
+#   5. frontmatter records metadata.libra_version (the version it was verified against)
+#   6. every relative Markdown link resolves to a file inside the skill directory
+#   7. SKILL.md stays within the line budget (deep material belongs in references/)
 #
 # Usage: scripts/validate-skills.sh
 set -euo pipefail
@@ -66,7 +67,13 @@ for skill in "$src"/*/; do
     [ "${#fm_desc}" -le 1024 ] || err "description is ${#fm_desc} chars (max 1024)"
   fi
 
-  # 5. relative links resolve inside the skill directory
+  # 5. the Libra version this skill was verified against
+  fm_version="$(printf '%s\n' "$fm" | sed -n 's/^[[:space:]]*libra_version:[[:space:]]*//p' | head -n 1 | tr -d '"')"
+  if [ -z "$fm_version" ]; then
+    err "frontmatter has no metadata.libra_version — every skill here documents Libra, and scripts/check-against-libra.sh needs to know which version was verified"
+  fi
+
+  # 6. relative links resolve inside the skill directory
   while IFS= read -r target; do
     [ -n "$target" ] || continue
     case "$target" in
@@ -77,7 +84,7 @@ for skill in "$src"/*/; do
     [ -e "$skill/$target" ] || err "broken relative link '$target' (nothing at $skill$target)"
   done <<< "$(grep -rhoE '\]\([^)]+\)' "$skill" | sed 's/^](//; s/)$//')"
 
-  # 6. line budget
+  # 7. line budget
   lines="$(wc -l < "$file")"
   [ "$lines" -le "$max_lines" ] \
     || err "SKILL.md is $lines lines (budget $max_lines) — move depth into references/"

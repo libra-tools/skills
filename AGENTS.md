@@ -42,7 +42,8 @@ Two GitHub Actions workflows run on the mirror
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/ci.yml` | push to `main`, PRs, manual | The two hook checks, plus: every script keeps its exec bit, every script parses, `install.sh` survives a `--copy` install/uninstall round trip on a clean runner, and the Libra-native emitter produces frontmatter Libra's parser accepts |
+| `ci.yml` → `skills` | push to `main`, PRs, manual, weekly | The two hook checks, plus: every script keeps its exec bit, every script parses, `install.sh` survives a `--copy` install/uninstall round trip on a clean runner, and the Libra-native emitter produces frontmatter Libra's parser accepts |
+| `ci.yml` → `drift` | same, and **weekly on a cron** | Sparse-checks out Libra's `docs/` and runs `scripts/check-against-libra.sh` against it |
 
 The local pre-commit hook can be skipped with `--no-verify`; CI cannot. Keep both.
 
@@ -98,12 +99,40 @@ does.** Add a channel only for something no existing tool can do, the way the
 
 ## Keeping content true to Libra
 
-Libra ships breaking changes often. A skill that documents Libra must:
+Libra ships breaking changes several times a week, so a skill documenting it rots
+quietly. Three defences, in order of how much they actually catch:
 
-- state the Libra version it was verified against, near the top of `SKILL.md`;
-- prefer `docs/commands/<name>.md` and `COMPATIBILITY.md` in the Libra source tree over
-  memory — and say that the binary wins when they disagree;
-- never describe a flag without checking it is still exposed (`libra <cmd> --help`).
+**1. `scripts/check-against-libra.sh`** — the mechanical cross-check. Given
+`LIBRA_SRC=/path/to/libra` it verifies, over every code span and fenced block in
+`SKILL.md` and `references/`:
+
+- every `libra <cmd>` is a real command (a `docs/commands/<name>.md` exists);
+- every flag written after a command is *documented* for that command — as an
+  option heading, an option-table row, or a `libra ...` line in a fenced block.
+  A bare substring search is not enough: `commit.md` contains the text `-S`
+  twice while saying it is **not** exposed;
+- every `LBR-<NS>-<NNN>` and every `LBR-<NS>-*` namespace exists in
+  `docs/error-codes.md`;
+- the frontmatter `metadata.libra_version` is present, agrees with the version
+  stated in the body, and matches the Libra tree being checked.
+
+Without `LIBRA_SRC` it skips, so contributors without the Libra source are never
+blocked. The `drift` CI job supplies it weekly.
+
+`scripts/libra-check-allow.txt` lists tokens that look like commands but are not
+— currently just `db`, because the skill warns that `libra db upgrade` was
+removed. An allowlisted token is still only accepted on a line whose prose marks
+it as gone, so it cannot come back as advice.
+
+**2. `metadata.libra_version` in the frontmatter**, mirrored by a sentence near
+the top of the body. Both must say the same version; the cross-check enforces it.
+
+**3. Judgement, for the claims no script can check.** Prefer
+`docs/commands/<name>.md` and `COMPATIBILITY.md` in the Libra source over memory,
+say that the binary wins when they disagree, and never describe a behaviour
+without checking it (`libra <cmd> --help`). Whether `post-commit` runs, or
+whether `libra code` still has a TUI, is exactly this category — the cross-check
+will not save you there.
 
 ## Versioning
 

@@ -25,6 +25,7 @@ libra-tools/skills/
 │   ├── sync-skills.sh               ← regenerate mirrors (--check for CI/hooks)
 │   ├── validate-skills.sh           ← frontmatter, naming, links, line budget
 │   ├── emit-libra-skill.sh          ← flatten to the Libra-native format
+│   ├── check-against-libra.sh       ← cross-check every claim against Libra's source
 │   └── install-hooks.sh             ← wire the checks into .libra/hooks/
 ├── install.sh                       ← contributor install: symlink a working copy
 ├── .github/workflows/ci.yml         ← CI

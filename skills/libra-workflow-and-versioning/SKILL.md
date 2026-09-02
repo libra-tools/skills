@@ -1,6 +1,8 @@
 ---
 name: libra-workflow-and-versioning
 description: Structures Libra (AI-agent-native VCS) workflow practices. Use when making any change in a `libra` repository. Use when committing, branching, working across worktrees, backing up to the cloud, or organizing work for AI agents. Adapts git-workflow-and-versioning to Libra's SQLite-backed refs, per-worktree HEAD over shared object storage, and structured CLI surface.
+metadata:
+  libra_version: "0.22.10"
 ---
 
 # Libra Workflow and Versioning

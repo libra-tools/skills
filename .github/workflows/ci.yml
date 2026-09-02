@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+  # Libra ships breaking changes several times a week. The drift job below has
+  # to run on a clock, not only when this repository changes.
+  schedule:
+    - cron: '17 6 * * 1'
 
 permissions:
   contents: read
@@ -83,3 +87,27 @@ jobs:
               assert not dangling, f"{path}: {len(dangling)} reference links survive flattening"
               print(f"{path}: ok ({sorted(data)})")
           PY
+
+  drift:
+    name: Claims still match Libra
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Only what the cross-check reads: the command docs, the error-code table
+      # and the version. Cloning the whole Libra tree for three inputs is waste.
+      - name: Check out the Libra docs
+        uses: actions/checkout@v7
+        with:
+          repository: libra-tools/libra
+          path: libra-src
+          sparse-checkout: |
+            docs/commands
+            docs/error-codes.md
+            Cargo.toml
+          sparse-checkout-cone-mode: false
+
+      - name: Cross-check every claim a machine can check
+        env:
+          LIBRA_SRC: ${{ github.workspace }}/libra-src
+        run: bash scripts/check-against-libra.sh --verbose

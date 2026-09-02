@@ -1,0 +1,9 @@
+# Tokens that look like `libra <cmd>` but are deliberately not real commands.
+# One per line: <token> # <why it is written down anyway>
+#
+# Keep this list short. An allowlisted token is still only accepted on a line
+# whose prose marks it as gone (removed / no longer / does not exist / not
+# exposed / was retired), so an entry here cannot smuggle the command back in as
+# advice -- but it does mean the token itself is no longer verified.
+
+db   # removed; the skill warns that `libra db upgrade` no longer exists
