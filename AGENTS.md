@@ -42,41 +42,28 @@ Two GitHub Actions workflows run on the mirror
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/ci.yml` | push to `main`, PRs, manual | The two hook checks, plus: every script keeps its exec bit, every script parses, and `install.sh` survives a `--copy` install/uninstall round trip on a clean runner |
-| `.github/workflows/release.yml` | a `v*` tag, or manual | Re-runs the checks, inspects the npm tarball, then publishes |
+| `.github/workflows/ci.yml` | push to `main`, PRs, manual | The two hook checks, plus: every script keeps its exec bit, every script parses, `install.sh` survives a `--copy` install/uninstall round trip on a clean runner, and the Libra-native emitter produces frontmatter Libra's parser accepts |
 
 The local pre-commit hook can be skipped with `--no-verify`; CI cannot. Keep both.
 
-## Publishing
+## Distribution
 
-The primary distribution channel is the ecosystem CLI, which reads this
-repository's layout straight from GitHub and needs nothing from us:
+The supported install path is the ecosystem CLI, which reads this repository's
+layout straight from GitHub and needs nothing published on our side:
 
 ```bash
 npx skills add libra-tools/libra-workflow-and-versioning
 ```
 
 Keep `skills/<name>/SKILL.md` as the canonical layout — it is the first
-well-known discovery location that CLI looks in, which is what makes the command
-above work.
+well-known location that CLI looks in, and it is what makes the command above
+work. Moving it would silently break every installer.
 
-We also publish an npm package, `@libra-tools/skills`, for the two things that
-CLI cannot do: emitting the Libra-native single-file skill for `libra code`, and
-pinning an exact version.
-
-`release.yml` owns publishing; never run `npm publish` from a laptop. To cut a
-release:
-
-1. Bump `version` in `package.json` and commit it.
-2. `libra tag v<version> && libra push origin v<version>`.
-3. The workflow verifies the tag matches `package.json`, revalidates every skill,
-   asserts the tarball carries `skills/` and none of the generated mirrors, and
-   publishes with `--provenance`.
-
-Prerequisites: the repository secret `NPM_TOKEN` (an npm automation token), and a
-`package.json` whose `files` field ships only `skills/`, `bin/`, `README.md` and
-`LICENSE`. Until that `package.json` exists the release workflow fails fast on
-purpose.
+There is deliberately **no npm package**. An earlier iteration built one (it was
+never published) before we found the `skills` CLI: it duplicated a subset of that
+CLI while costing a release pipeline, an npm token and a version to keep in step. The one thing it did that the CLI cannot —
+emitting the Libra-native single-file skill for `libra code` — lives in
+`scripts/emit-libra-skill.sh` instead, and `install.sh` calls it.
 
 ## SKILL.md rules (keep skills portable)
 

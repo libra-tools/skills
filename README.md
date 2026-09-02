@@ -24,11 +24,10 @@ libra-workflow-and-versioning/
 ├── scripts/
 │   ├── sync-skills.sh               ← regenerate mirrors (--check for CI/hooks)
 │   ├── validate-skills.sh           ← frontmatter, naming, links, line budget
-│   └── install-hooks.sh             ← wire both into .libra/hooks/
+│   ├── emit-libra-skill.sh          ← flatten to the Libra-native format
+│   └── install-hooks.sh             ← wire the checks into .libra/hooks/
 ├── install.sh                       ← contributor install: symlink a working copy
-├── bin/install.mjs                  ← npm installer (`npx @libra-tools/skills`)
-├── package.json                     ← published as @libra-tools/skills
-├── .github/workflows/               ← CI + npm release
+├── .github/workflows/ci.yml         ← CI
 ├── AGENTS.md                        ← conventions for editing this repo
 └── README.md
 ```
@@ -54,7 +53,7 @@ fails closed on Windows and does not survive a zip download.
 
 ## Use it
 
-### Recommended — the `skills` CLI
+### The `skills` CLI
 
 This repository follows the open Agent Skills layout, so the ecosystem CLI
 installs it directly from GitHub. No clone, no npm package, no Libra required:
@@ -67,22 +66,20 @@ npx skills add libra-tools/libra-workflow-and-versioning --list     # just look
 
 [`skills`](https://github.com/vercel-labs/skills) supports 77 agents, symlink or
 `--copy` installs, per-agent targeting (`-a claude-code -a opencode`), and
-`skills list` / `update` / `remove`. Prefer it unless you need one of the two
-things it does not do — see below.
+`skills list` / `update` / `remove`. This is the supported way to install.
 
-### With the `libra code` bridge, or a pinned version
+### For `libra code`
+
+`libra code` is the one agent the `skills` CLI cannot serve, because its runtime
+reads a different format (see the note below). Generate that form from a clone:
 
 ```bash
-npx @libra-tools/skills            # install for every agent, globally
-npx @libra-tools/skills --project  # install into the current repository instead
-npx @libra-tools/skills@0.1.0      # pin an exact version
-npx @libra-tools/skills uninstall
+scripts/emit-libra-skill.sh                        # -> ~/.config/libra/skills/
+scripts/emit-libra-skill.sh /path/to/repo/.libra/skills
+scripts/emit-libra-skill.sh --stdout <skill-name>  # inspect, write nothing
 ```
 
-Our own installer exists for the two things the `skills` CLI has no notion of:
-it **also emits the Libra-native single-file skill** so `libra code` picks up the
-same content, and npm semver lets you pin a release. Otherwise it does strictly
-less. Options: `--copy` / `--link`, `--dry-run`, `--no-libra`.
+`./install.sh` runs this for you as part of a global install (`--no-libra` opts out).
 
 ### Per-project (no install)
 
@@ -123,10 +120,10 @@ Re-run it after `libra pull` to pick up updates.
 
 > **`libra code` uses a different format.** Its agent runtime loads a single
 > `<name>.md` with TOML frontmatter from `.libra/skills/` or
-> `~/.config/libra/skills/`, not a directory with a `SKILL.md`. Neither the
-> `skills` CLI nor `install.sh` knows about it. `npx @libra-tools/skills`
-> bridges it: it flattens the skill (references inlined) into that format as
-> well, so `/skill libra-workflow-and-versioning` works inside `libra code`.
+> `~/.config/libra/skills/`, not a directory with a `SKILL.md`, and it has no
+> notion of bundled reference files. `scripts/emit-libra-skill.sh` bridges it by
+> flattening the skill — references inlined — into that format, so
+> `/skill libra-workflow-and-versioning` works inside `libra code`.
 
 ## Add or edit a skill
 

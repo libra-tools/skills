@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   skills:
-    name: Validate skills and mirrors
+    name: Validate skills, mirrors and installers
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -42,71 +42,44 @@ jobs:
           done
           exit $status
 
-      # A consumer must be able to install without a clone-local shell. Prove the
-      # documented entry points work on a clean runner.
       - name: install.sh --dry-run
         run: ./install.sh --dry-run
 
-      - name: install.sh --copy round-trip
+      - name: install.sh round trip
         run: |
           ./install.sh --copy
           test -f "$HOME/.claude/skills/libra-workflow-and-versioning/SKILL.md"
           test -f "$HOME/.agents/skills/libra-workflow-and-versioning/references/worktrees.md"
+          test -f "$HOME/.config/libra/skills/libra-workflow-and-versioning.md"
           ./install.sh --uninstall
           test ! -e "$HOME/.claude/skills/libra-workflow-and-versioning"
+          test ! -e "$HOME/.config/libra/skills/libra-workflow-and-versioning.md"
 
-  npm-installer:
-    name: npm installer
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-
-      - name: Help and version
+      - name: install.sh --no-libra skips the bridge
         run: |
-          node bin/install.mjs --help
-          test "$(node bin/install.mjs --version)" = "$(node -p "require('./package.json').version")"
+          ./install.sh --copy --no-libra
+          test ! -e "$HOME/.config/libra/skills/libra-workflow-and-versioning.md"
+          ./install.sh --uninstall
 
-      - name: Project-mode install round trip
+      # `libra code` parses TOML frontmatter with serde deny_unknown_fields, so an
+      # extra or misspelled key makes the emitted skill unloadable.
+      - name: libra-native emitter output is loadable
         run: |
-          mkdir -p /tmp/proj/.libra
-          node bin/install.mjs --project /tmp/proj --copy
-          test -f /tmp/proj/.claude/skills/libra-workflow-and-versioning/SKILL.md
-          test -f /tmp/proj/.codex/skills/libra-workflow-and-versioning/references/worktrees.md
-          test -f /tmp/proj/.libra/skills/libra-workflow-and-versioning.md
-          node bin/install.mjs --project /tmp/proj uninstall
-          test ! -e /tmp/proj/.claude/skills/libra-workflow-and-versioning
-
-      # `libra code` parses TOML frontmatter with deny_unknown_fields, so an
-      # extra or misspelled key makes the generated skill unloadable.
-      - name: libra-native skill has valid, accepted frontmatter
-        run: |
-          mkdir -p /tmp/native/.libra
-          node bin/install.mjs --project /tmp/native --copy > /dev/null
-          python3 - /tmp/native/.libra/skills/libra-workflow-and-versioning.md <<'PY'
-          import sys, tomllib
-          text = open(sys.argv[1], encoding="utf-8").read()
-          assert text.startswith("---"), "missing leading fence"
-          data = tomllib.loads(text[3:text.index("---", 3)].strip())
-          allowed = {"name", "description", "version", "allowed-tools", "allowed_tools"}
-          extra = set(data) - allowed
-          assert not extra, f"frontmatter keys libra would reject: {sorted(extra)}"
-          assert data.get("name"), "name must be non-empty"
-          print("libra-native frontmatter ok:", sorted(data))
+          for skill in skills/*/; do
+            name="$(basename "$skill")"
+            bash scripts/emit-libra-skill.sh --stdout "$name" > "/tmp/$name.md"
+          done
+          python3 - /tmp/*.md <<'PY'
+          import sys, re, tomllib
+          for path in sys.argv[1:]:
+              text = open(path, encoding="utf-8").read()
+              assert text.startswith("---"), f"{path}: missing leading fence"
+              data = tomllib.loads(text[3:text.index("---", 3)].strip())
+              extra = set(data) - {"name", "description", "version", "allowed-tools", "allowed_tools"}
+              assert not extra, f"{path}: keys libra would reject: {sorted(extra)}"
+              assert data.get("name"), f"{path}: name must be non-empty"
+              body = text[text.index("---", 3) + 3:]
+              dangling = re.findall(r"\]\(references/", body)
+              assert not dangling, f"{path}: {len(dangling)} reference links survive flattening"
+              print(f"{path}: ok ({sorted(data)})")
           PY
-
-      # The published tarball must carry the canonical skills/ and none of the
-      # generated agent mirrors. Checked here as well as at release time.
-      - name: Tarball contents
-        run: |
-          npm pack --dry-run --json > /tmp/pack.json
-          node -e '
-            const files = require("/tmp/pack.json")[0].files.map(f => f.path);
-            const bad = files.filter(f => /^\.(agents|claude|codex)\//.test(f));
-            if (bad.length) { console.error("generated mirrors leaked into the tarball:", bad); process.exit(1); }
-            if (!files.some(f => f.startsWith("skills/"))) { console.error("tarball carries no skills/"); process.exit(1); }
-            console.log(`tarball ok: ${files.length} files`);
-          '
