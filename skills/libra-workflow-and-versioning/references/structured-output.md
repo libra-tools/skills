@@ -1,7 +1,8 @@
 # Structured output and stable error codes
 
-Drive Libra like an agent: branch on the envelope and the error code, never on
-human prose.
+Use a command's documented envelope and stable error code for automation.
+Some plumbing commands intentionally emit raw bytes or status-only results;
+check their contracts before assuming every successful stdout is an envelope.
 
 ## Output modes
 
@@ -35,6 +36,13 @@ diagnostic.
 | `128` | Fatal runtime error | Check `error_code` for the category |
 | `129` | Usage / invalid target | Fix the invocation |
 
+Command-specific statuses also exist: `status --exit-code` uses 1 for dirty,
+branch-delete refusals use 1, and `cat-file -e` is a silent 0/1 probe.
+Read-only review runs can exit 0 after timeout/cancellation/partial outcomes;
+inspect their terminal state. JSON-RPC bridge errors are frames and do not
+necessarily terminate the serving process. `LIBRA_FINE_EXIT_CODES=1` opts into
+legacy 2-8 mappings; do not assume it is unset in a wrapper's environment.
+
 Arbitration when several apply: fatal ≻ 9 (warning) ≻ 1 (dirty, for
 `status --exit-code`) ≻ 0.
 
@@ -52,6 +60,7 @@ Arbitration when several apply: fatal ≻ 9 (warning) ≻ 1 (dirty, for
 | `LBR-POLICY-*` | Branch policy (protected / archived) blocked a ref update |
 | `LBR-CASE-*` | Case-only path collision on a case-insensitive filesystem |
 | `LBR-LAYER-*` | Layer overlay collision, or a layer path was staged |
+| `LBR-MEMORY-*` | Derived development-history projection is stale |
 | `LBR-NET-*` / `LBR-AUTH-*` | Transport and authentication |
 | `LBR-IO-*` | Filesystem read/write |
 | `LBR-ADD-*` · `LBR-BISECT-*` · `LBR-AGENT-*` · `LBR-OBLITERATE-*` | Command-specific |
@@ -63,10 +72,25 @@ Codes worth recognizing on sight:
   message, bad `--author`).
 - `LBR-REPO-003` — repository state blocks the operation (no commits yet, a
   `legacy-symlink` worktree, missing configured remote).
-- `LBR-CONFIG-001` — the *global* config DB schema is newer than this binary; cloud
-  and remote commands fail closed rather than silently ignoring storage config.
+- `LBR-CONFIG-001` — a required GlobalConfig/SystemConfig schema or migration
+  receipt is unsupported. Compatibility is role-scoped: known repository-only
+  receipts do not make configuration future. Some optional configuration reads
+  can warn and skip a future store; required storage settings fail closed.
 - `LBR-CONFLICT-002` — blocked to avoid overwriting (non-fast-forward, destination
   exists, dirty worktree).
 
 `update-ref` is the documented exception: its fatals exit `128` even for codes the
 table lists at `129`.
+
+## Warnings and pages
+
+In JSON status, structured warnings use `data.warnings[]` with
+`{code, message, source}`; text modes print them on stderr. A valid envelope
+with partial results and warnings is not proof of a complete scan. A command
+can finish its mutation and then return warning exit 9; inspect state before
+retrying an apparently failed mutation.
+
+Agent session/checkpoint/workspace and review/investigate listings use bounded
+keyset pages. Round-trip `next_cursor` verbatim with the same command/filter
+context and check `has_more` where provided. Operation history uses its own
+page/index contract instead; do not generalize one cursor format to all lists.

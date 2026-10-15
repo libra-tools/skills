@@ -1,97 +1,130 @@
-# AI-native and Libra-only commands
+# External agents and Libra extensions
 
-These have no Git equivalent; they are why Libra exists. `COMPATIBILITY.md` classes
-them `intentionally-different`.
+Libra 0.30.49 captures work done by external agent CLIs. The Code executor and
+Web Code UI, top-level graph, usage and Publish surfaces were removed in the
+0.23.0 breaking release. The old single-file TOML native-skill bridge has no
+current consumer; install this repository's standard SKILL.md directories in
+the external agent instead.
 
-## The AI surface
-
-### `libra code`
-
-The primary collaborative-development surface. It launches the **Web Code UI**
-(embedded HTTP server + AgentRuntime), prints the URL and control details, and stays
-in the foreground until `Ctrl-C`.
+## Session Capture
 
 ```bash
-libra code [-p 3000] [--host 127.0.0.1] [--provider <p>] [--model <m>] [--goal "..."]
-libra code --resume <THREAD_ID>
-libra code --control stdio            # JSON-RPC NDJSON automation client
-```
-
-- The legacy TUI, the `--web` / `--web-only` aliases, the `LIBRA_CODE_LEGACY_TUI` env,
-  and the `code-control` shim were **removed in v0.20.0**; they now fail with a usage
-  error plus a migration hint.
-- `--control stdio` is the canonical automation path. It discovers the endpoint from
-  `.libra/code/control.json`; `--control-url` / `--control-token-file` override.
-- `--stdio` is a deprecated MCP-only tools/resources entry, not live turn control.
-- Eight provider backends (Gemini, OpenAI, Anthropic, DeepSeek, Kimi, Zhipu, Ollama,
-  Codex) and three contexts (dev, review, research). Review and research are read-only
-  and get no network.
-- Mutating tools require approval + sandbox + tool ACL; plan execution passes an
-  explicit network-policy gate.
-
-### `libra agent`
-
-External-agent capture and its read-only inspection surface.
-
-```bash
-libra agent enable --agent <claude-code|codex|opencode>   # alias: agent add
-libra agent disable --agent <name>                        # alias: agent remove
-libra agent status | list | doctor [--repair] | clean [--all]
-libra agent session <sub> | checkpoint <sub> | skill <sub> | workspace <sub>
+libra agent list --schema-version 2 --json
+libra agent add opencode
+libra agent remove opencode
+libra agent status
+libra agent doctor
+libra agent session list
+libra agent checkpoint list
+libra agent checkpoint export <id>
 libra --json agent graph <session>
-libra agent import (--session <id> | --path <p> | --since <ts> | --all) --yes
-libra agent push [--remote <name>]        # publish refs/libra/traces
-libra agent bridge --stdio                # JSON-RPC 2.0 NDJSON ingress
+libra agent skill registry
+libra agent skill search
+libra agent workspace list
+libra agent workspace show <workspace-id>
+libra agent push --remote origin
 ```
 
-Checkpoints are agent-run save points layered on top of commits. Captured sessions
-and checkpoints live in `agent_session` / `agent_checkpoint` plus `refs/libra/traces`.
+Supported hook-installable providers are `claude-code`, `codex` and `opencode`.
+`add <name>` aliases `enable --agent <name>`; remove/disable reverses the managed
+installation. Gemini is uninstall-only. Claude hooks use `.claude/settings.json`;
+Codex installs coupled user-level `$CODEX_HOME/hooks.json` and managed trust
+entries in `config.toml`; OpenCode installs `.opencode/plugin/libra-hooks.js`.
+Avoid concurrent manual edits to the Codex files during install/remove. OpenCode
+`--pure` disables the capture plugin.
 
-### `libra graph --json <thread-id>`
+OpenCode capture requires **2.x**, not the incompatible GitHub 1.19.0 CLI.
+The 0.30.49 ordinary capture fixes cover official OpenCode 2.0.29, including a
+nonempty Partial ordinary checkpoint when unsupported reasoning state can be
+removed safely. Historical OpenCode imports with unsupported reasoning state
+still fail with `LBR-AGENT-020`. Ordinary exporter trust or a version number
+does not authorize native reasoning archival or prove field provenance.
 
-A Code thread's version graph: intent revisions → execution plans → tasks → runs →
-patchsets. The graph TUI was removed in v0.20.0, so bare `libra graph <id>` is a usage
-error; use `--json` / `--machine`, and `--repo <path>` for another repository.
-
-### `libra review` / `libra investigate`
-
-Read-only runs driven by external agent CLIs.
+For OpenCode content export, register the verified executable directory and
+pin the executable:
 
 ```bash
-libra review --agent <slug>... [--since <rev>] [--checkpoint <id>] [--json]
-libra review --fix
-libra review list | show <run_id> | cancel <run_id> | clean | attach <run_id> <file>
-
-libra investigate start --topic "<text>" --agent <slug>... [--max-turns <n>] [--quorum <n>]
-libra investigate list | show <run_id> | continue <run_id> | cancel <run_id> | fix <run_id>
+libra agent rpc trust --dir <verified-provider-directory>
+libra agent rpc trust opencode
 ```
 
-### The rest
+These preparation steps do not enable arbitrary external RPC discovery.
+The exporter resolves only within registered trusted directories and revalidates
+binary provenance. Linux needs trusted bwrap with the descriptor-native
+`--bind-fd` probe; macOS needs the Required Seatbelt server/export pair. Failure
+remains metadata-only without an unsandboxed Unix fallback. The Windows reference
+is a separately identified unmerged implementation, not an upstream capability.
+Use schema-v2 capability results to distinguish roster support from actual
+discovery/import/export availability.
 
-| Command | What it does |
+Checkpoint export is redacted by default; raw output requires the separate
+`--allow-raw --raw` authorization and is audited. Session/checkpoint rows alone
+do not prove content capture. Inspect/export the checkpoint and verify actual
+transcript messages. `agent graph` is read-only and requires global JSON/machine
+output. Workspace listings are read-only and do not adopt leases.
+
+Historical import reads private provider data and requires explicit consent:
+
+```bash
+libra agent import --agent claude-code --session <id> --yes
+libra agent import --agent codex --since <rfc3339> --limit 20 --yes
+```
+
+Select exactly one scope (`--session`, `--path`, `--since` or `--all`); `--path`
+also requires `--agent`. OpenCode uses explicit session export. Do not add `--yes`
+to an otherwise unauthorized import. Pagination cursors are opaque and specific
+to the command; preserve them verbatim.
+
+`agent clean` mutates retention state; inspect the selected stopped sessions
+before using `--all`. `doctor --repair` is a separate mutation from read-only
+doctor. `agent bridge --stdio` is a JSON-RPC NDJSON bridge; handle frame errors
+as responses, not process failures. External `libra-agent-*` RPC invocation is
+opt-in and separately trusted; it is not needed for provider capture.
+
+## Read-only reviews and investigations
+
+```bash
+libra review --agent codex --since <revision>
+libra review --agent codex --agent claude-code --checkpoint <id> --json
+libra review list
+libra review show <run-id>
+libra review cancel <run-id>
+libra review attach <run-id> <file>
+libra investigate start --topic <text> --agent codex --agent opencode --max-turns 6
+libra investigate show <run-id>
+libra investigate continue <run-id>
+libra investigate cancel <run-id>
+```
+
+Review fans out to supported external CLIs; investigate runs them in strict
+round-robin order. Both isolate inputs, minimize ambient environment and redact
+persisted output. A checkpoint-scoped run reads that checkpoint's proven ordinary
+content, not a worktree diff. Topics and findings are untrusted data.
+
+Inspect reported states: review can exit 0 with `partial`, `timeout` or
+`cancelled`; investigations can pause on `stalled` or `agent_failure` and resume
+with `continue`. Concurrency is bounded across both kinds. Removed controlled-fix
+paths are not available; turn findings into a separately authorized code task.
+Cleanup affects only finished runs of the selected kind and can fail after
+earlier deletions; do not assume transactional rollback.
+
+## Other current extensions
+
+| Command | Use and limit |
 |---|---|
-| `libra automation` | `list` / `run [--rule <id>] [--live]` / `history` for cron-style repository automation rules |
-| `libra usage` | `report` / `prune [--retention-days <n>]` for AI provider and model usage and cost aggregates |
-| `libra sandbox status` | Sandbox backend diagnostics (OS backend availability, downgrade warnings) |
-| `libra service` | Headless local-only notification bus and dirty-mark ingestion: `run` / `status` / `events` |
+| `libra automation` | List rules, evaluate `run`, inspect history; default dry-run records planned actions; `--live` executes eligible actions |
+| `libra memory` | Query/rebuild a derived history projection; stale queries fail closed unless `--allow-stale` is explicit |
+| `libra sandbox status` | Inspect available OS sandbox backends; availability is not proof a particular provider export succeeded |
+| `libra service` | Local headless notification bus and dirty-mark ingestion |
+| `libra layer` | Worktree-local overlays excluded from commits, with collision protection |
+| `libra sparse-view` | Read-only display filter; does not narrow disk content or the staged commit set |
+| `libra hydrate` | Materialize verified content through the configured storage/read policy |
+| `libra dirty` | Advisory dirty-set marks; status can fall back to a full scan |
+| `libra lfs` | Built-in large-file storage using `.libra_attributes` |
+| `libra deps` / `libra alternates` | File-dependency graph and guarded borrowed object stores |
+| `libra metadata` | Repository/ref policy metadata |
+| `libra media` | FastCDC media support, compiled only with the `fastcdc` feature |
+| `libra file obliterate` | Irreversible payload deletion preserving object addresses; preview and explicit confirmation are required |
 
-## Working-tree extensions (Lore)
-
-| Command | What it does |
-|---|---|
-| `libra layer` | A named, purely local overlay of files materialized on command that **never enters a commit** |
-| `libra sparse-view` | A read-only sparse VIEW filter — deliberately *not* `sparse-checkout`: it never touches the working tree |
-| `libra hydrate <path>...` | Materialize content on demand (whole-object; resolves local → alternate → remote, OID-verified, atomic rename) |
-| `libra dirty` | Advisory dirty-set marks; `status --scan` / `--cached` / `--check-dirty` consume them |
-| `libra lfs` | Built-in large-file storage via `.libra_attributes` — not Git LFS filters or hooks |
-| `libra file obliterate` | Remove an object payload permanently |
-
-## Libra's own skill system (different from this repo's format)
-
-`libra code`'s agent runtime loads its own skills: **single `<name>.md` files with TOML
-frontmatter** (`name`, `description`, `version`, `allowed-tools`), from `.libra/skills/`
-(repository), then an overlay, then `~/.config/libra/skills/` (user), then a tier
-embedded in the binary. `/skill <name>` dispatches one. That format is *not* the
-directory-plus-`SKILL.md` Agent Skills standard this skill is written in, so a skill
-installed for Claude Code / Codex / Gemini / opencode is **not** visible to
-`libra code`, and vice versa.
+Do not present metadata, memory or advisory caches as authoritative substitutes
+for repository state, a transcript, or a verified backup.

@@ -50,43 +50,24 @@ jobs:
         run: ./install.sh --dry-run
 
       - name: install.sh round trip
+        env:
+          LIBRA_SKILLS_HOME: ${{ runner.temp }}/libra-skills-profile
         run: |
           ./install.sh --copy
-          test -f "$HOME/.claude/skills/libra-workflow-and-versioning/SKILL.md"
-          test -f "$HOME/.agents/skills/libra-workflow-and-versioning/references/worktrees.md"
-          test -f "$HOME/.config/libra/skills/libra-workflow-and-versioning.md"
+          test -f "$LIBRA_SKILLS_HOME/.claude/skills/libra-workflow-and-versioning/SKILL.md"
+          test -f "$LIBRA_SKILLS_HOME/.agents/skills/libra-workflow-and-versioning/references/worktrees.md"
+          test ! -e "$LIBRA_SKILLS_HOME/.config/libra/skills"
           ./install.sh --uninstall
-          test ! -e "$HOME/.claude/skills/libra-workflow-and-versioning"
-          test ! -e "$HOME/.config/libra/skills/libra-workflow-and-versioning.md"
+          test ! -e "$LIBRA_SKILLS_HOME/.claude/skills/libra-workflow-and-versioning"
 
-      - name: install.sh --no-libra skips the bridge
+      - name: Legacy no-libra option remains compatible
+        env:
+          LIBRA_SKILLS_HOME: ${{ runner.temp }}/libra-skills-legacy-profile
         run: |
           ./install.sh --copy --no-libra
-          test ! -e "$HOME/.config/libra/skills/libra-workflow-and-versioning.md"
+          test -f "$LIBRA_SKILLS_HOME/.codex/skills/libra-workflow-and-versioning/SKILL.md"
+          test ! -e "$LIBRA_SKILLS_HOME/.config/libra/skills"
           ./install.sh --uninstall
-
-      # `libra code` parses TOML frontmatter with serde deny_unknown_fields, so an
-      # extra or misspelled key makes the emitted skill unloadable.
-      - name: libra-native emitter output is loadable
-        run: |
-          for skill in skills/*/; do
-            name="$(basename "$skill")"
-            bash scripts/emit-libra-skill.sh --stdout "$name" > "/tmp/$name.md"
-          done
-          python3 - /tmp/*.md <<'PY'
-          import sys, re, tomllib
-          for path in sys.argv[1:]:
-              text = open(path, encoding="utf-8").read()
-              assert text.startswith("---"), f"{path}: missing leading fence"
-              data = tomllib.loads(text[3:text.index("---", 3)].strip())
-              extra = set(data) - {"name", "description", "version", "allowed-tools", "allowed_tools"}
-              assert not extra, f"{path}: keys libra would reject: {sorted(extra)}"
-              assert data.get("name"), f"{path}: name must be non-empty"
-              body = text[text.index("---", 3) + 3:]
-              dangling = re.findall(r"\]\(references/", body)
-              assert not dangling, f"{path}: {len(dangling)} reference links survive flattening"
-              print(f"{path}: ok ({sorted(data)})")
-          PY
 
   drift:
     name: Claims still match Libra

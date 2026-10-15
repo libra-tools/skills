@@ -24,5 +24,5 @@ if [ -z "$repo_root" ]; then
 fi
 
 cd "$repo_root"
-sh scripts/validate-skills.sh
-sh scripts/sync-skills.sh --check
+bash scripts/validate-skills.sh
+bash scripts/sync-skills.sh --check

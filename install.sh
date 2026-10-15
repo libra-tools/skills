@@ -15,8 +15,9 @@
 # removable media). Re-running is safe and idempotent.
 #
 # Usage:
-#   ./install.sh [--copy] [--no-libra] [--dry-run]
+#   ./install.sh [--copy] [--dry-run]
 #   ./install.sh --uninstall [--dry-run]
+#   LIBRA_SKILLS_HOME=/path/to/profile ./install.sh --copy
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")" && pwd)"
@@ -25,12 +26,12 @@ src="$repo_root/skills"
 mode=symlink
 action=install
 dry_run=false
-libra_native=true
+target_home="${LIBRA_SKILLS_HOME:-$HOME}"
 for arg in "$@"; do
   case "$arg" in
     --copy)      mode=copy ;;
     --uninstall) action=uninstall ;;
-    --no-libra)  libra_native=false ;;
+    --no-libra)  echo "note: --no-libra is obsolete; native Code skill emission was retired" >&2 ;;
     --dry-run)   dry_run=true ;;
     -h|--help)   sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "error: unknown option '$arg'" >&2; exit 2 ;;
@@ -40,11 +41,11 @@ done
 [ -d "$src" ] || { echo "error: no skills found in $src" >&2; exit 1; }
 
 targets=(
-  "$HOME/.claude/skills"           # Claude Code, opencode
-  "$HOME/.agents/skills"           # Codex CLI, Gemini CLI, opencode
-  "$HOME/.codex/skills"            # Codex CLI
-  "$HOME/.gemini/skills"           # Gemini CLI
-  "$HOME/.config/opencode/skills"  # opencode
+  "$target_home/.claude/skills"           # Claude Code, opencode
+  "$target_home/.agents/skills"           # Codex CLI, Gemini CLI, opencode
+  "$target_home/.codex/skills"            # Codex CLI
+  "$target_home/.gemini/skills"           # Gemini CLI
+  "$target_home/.config/opencode/skills"  # opencode
 )
 
 run() { if $dry_run; then echo "  would: $*"; else "$@"; fi; }
@@ -84,26 +85,6 @@ for base in "${targets[@]}"; do
     fi
   done
 done
-
-# `libra code` reads a different format entirely — a single <name>.md with TOML
-# frontmatter — so the standard directories above leave it blind. Bridge it.
-libra_skill_dir="${XDG_CONFIG_HOME:-$HOME/.config}/libra/skills"
-if $libra_native; then
-  for skill in "$src"/*/; do
-    [ -d "$skill" ] || continue
-    name="$(basename "$skill")"
-    target="$libra_skill_dir/$name.md"
-    if [ "$action" = uninstall ]; then
-      if [ -f "$target" ]; then run rm -f "$target"; echo "removed   $target"; fi
-    elif $dry_run; then
-      echo "  would: emit $target"
-    else
-      mkdir -p "$libra_skill_dir"
-      "$repo_root/scripts/emit-libra-skill.sh" "$libra_skill_dir" >/dev/null
-      echo "emitted   $target   (libra code)"
-    fi
-  done
-fi
 
 echo
 if [ "$action" = uninstall ]; then

@@ -6,4 +6,9 @@
 # exposed / was retired), so an entry here cannot smuggle the command back in as
 # advice -- but it does mean the token itself is no longer verified.
 
-db   # removed; the skill warns that `libra db upgrade` no longer exists
+db   # removed; repository migrations run when the database opens
+code # removed in 0.23.0; external agent CLIs replace the old runtime
+code-control # removed alongside the Code runtime
+graph # removed top-level Code graph; agent graph is a separate nested command
+usage # removed Code usage aggregation
+publish # removed Worker publishing surface; cloud remains backup/restore

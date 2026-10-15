@@ -3,9 +3,9 @@
 ## Signing is vault-backed, on by default, and has no `-S`
 
 Signing is **enabled by default**: `libra init` sets `vault.signing=true`, so commits
-are PGP-signed with the repository vault key (libvault, `.libra/vault.db`) whenever an
-unseal key is available — *not* by an external `gpg` process. No GnuPG agent, keyring,
-or `~/.gnupg` is involved, and `merge` / `cherry-pick` reuse the same chain.
+are PGP-signed through the repository vault whenever an unseal key is available.
+Signing does not require an external `gpg` process or agent, and `merge` /
+`cherry-pick` reuse the signing chain.
 
 - **`-S` / `--gpg-sign` are not exposed.** Passing them is a usage error, not a signed
   commit.
@@ -14,8 +14,11 @@ or `~/.gnupg` is involved, and `merge` / `cherry-pick` reuse the same chain.
 - Structured output reports `signed: true` when vault signing was enabled and the
   commit was signed.
 
-Unlike Git — where signing needs `user.signingkey` + `gpg.program` + `commit.gpgSign`
-and most developers skip it — a Libra repo signs from `init` onward with no setup.
+The vault normally generates its own PGP key. Imported keys are also supported:
+`libra config import-gpg-key` sets `vault.gpg.source=imported`; removal with
+`libra config remove-gpg-key --force` returns to the generated key. These commands
+handle sensitive key material; use the documented import workflow and do not log
+the key or passphrase. Git's `user.signingkey` is not an external-keyring selector.
 
 ## Hooks are Libra-native
 
@@ -39,10 +42,11 @@ pre-commit → prepare-commit-msg → commit-msg → commit/ref update → post-
 
 **External-agent capture hooks are a separate surface.**
 `libra agent enable --agent <claude-code|codex|opencode>` (alias `libra agent add`)
-installs them into the host's own config (`.claude/settings.json`,
-`$CODEX_HOME/hooks.json`), and they call the hidden `libra hooks <provider> <event>`
-entry point — never invoke that yourself. Gemini is uninstall-only. Inspect what was
-captured with `libra agent session|checkpoint list` and `libra agent doctor`.
+installs host-specific hooks/plugins. Codex updates both `$CODEX_HOME/hooks.json`
+and managed trust entries in `config.toml`; OpenCode uses the managed project
+plugin. Do not manually invoke hidden hook ingress as a substitute for a real
+provider run. Gemini is uninstall-only. Inspect sessions/checkpoints and use
+`libra agent doctor` for diagnosis.
 
 ## Message sources
 
@@ -56,7 +60,9 @@ Exactly one message source wins, in this order: `-m`, `-F <file>`, `-C`/`-c <com
   `LBR-CLI-002` at exit 129.
 - `--amend --no-edit` reuses the parent's message; it still rewrites the commit even
   when tree and message are unchanged.
-- With no message source and no TTY, the commit aborts rather than opening an editor.
+- An explicitly configured editor can run without a TTY. When a message needs an
+  editor and none is configured, the fallback `vi` requires an interactive terminal;
+  otherwise the commit aborts. Supply `-m` or `-F` for unattended commits.
 
 ## `-a` is riskier than in Git
 

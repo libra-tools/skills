@@ -10,6 +10,9 @@ index, and HEAD reflog, plus a `commondir` pointer into the shared storage.
 Worktrees share one SQLite database, object store, branch/tag/remote refs, and
 config, but **each keeps its own checked-out branch and staging state** —
 committing in one worktree does not move another worktree's HEAD.
+Worktree-local info/exclude and info/attributes, layers, sparse-view and dirty
+state follow their worktree scope. A linked worktree is not an independent
+database backup or migration test.
 
 ## Commands
 
@@ -26,7 +29,7 @@ libra wt move ../probe ../probe2
 libra wt remove ../probe                     # DETACHES: keeps files and scoped state
 libra wt remove --delete-dir ../probe        # Git-style delete (refused if dirty)
 libra wt prune
-libra wt doctor                              # diagnose registry / layout problems
+libra wt doctor                              # read-only workspace/scope diagnostics
 ```
 
 ## Rules that differ from Git
@@ -76,6 +79,22 @@ path-derived identity (`add A` → `move A B` → `add A`). Every worktree *muta
 is refused while that holds, including the `remove` that would fix it.
 `libra worktree doctor` names the colliding entries; `libra worktree repair <path>
 --resolve-identity --yes` is the one action that runs against an ambiguous registry.
+That repair detaches the selected entry while keeping files and scoped state;
+inspect the diagnosed identities before confirming it. Ordinary repair mutations
+require `--confirm`; migration `--dry-run` needs no confirmation.
+
+## Workspace and registration fences
+
+The registry's stable worktree identity and its registration generation are
+different. Removing and re-adding the same path can preserve its id but advances
+the generation; do not reuse a stale generation in service dirty-mark requests.
+`libra agent workspace list` reports runtime workspace associations and lease
+state. A human worktree need not have a runtime workspace row.
+
+Read-only doctor reports do not adopt sessions, reclaim leases or repair state.
+Legacy capture-scope attribution, info-file adoption and approval adoption are
+separate explicitly confirmed commands; do not infer scope from a path or copy
+common state into every linked worktree.
 
 ## Parallel agents
 
